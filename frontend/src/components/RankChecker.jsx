@@ -5,7 +5,7 @@ import LocationSearch from './LocationSearch';
 const POLL_INTERVAL = 8000;   // 8 s between sync+status checks
 const POLL_TIMEOUT = 900000; // 15 min — high-priority tasks: 1-3 min, normal: up to 10 min
 
-export default function RankChecker() {
+export default function RankChecker({ onCostUpdate }) {
     const [form, setForm] = useState({ keyword: '', domain: '', device: 'desktop' });
     const [location, setLocation] = useState('');
     const [loading, setLoading] = useState(false);
@@ -70,15 +70,20 @@ export default function RankChecker() {
                     if (row?.status === 'completed') {
                         stopPolling();
                         setPolling(false);
-                        setResult({
+                        const resultData = {
                             keyword: row.keyword || form.keyword,
                             domain: form.domain,
                             location,
                             device: form.device,
                             found: row.rank !== null,
                             rank: row.rank,
-                            url: row.url
-                        });
+                            url: row.url,
+                            cost: row.cost || 0
+                        };
+                        setResult(resultData);
+                        if (onCostUpdate && row.cost) {
+                            onCostUpdate(row.cost);
+                        }
                     }
                 } catch (err) {
                     // silent — retry next tick
@@ -192,6 +197,7 @@ export default function RankChecker() {
                         <div><strong>Domain:</strong> {result.domain}</div>
                         <div><strong>Location:</strong> {result.location}</div>
                         <div><strong>Device:</strong> {result.device}</div>
+                        {result.cost > 0 && <div><strong>Cost:</strong> ${result.cost.toFixed(4)}</div>}
                         {result.url && <div><strong>Ranking URL:</strong> <a href={result.url} target="_blank" rel="noreferrer">{result.url}</a></div>}
                     </div>
                 </div>

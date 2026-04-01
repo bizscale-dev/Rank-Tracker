@@ -5,7 +5,7 @@ import LocationSearch from './LocationSearch';
 const POLL_INTERVAL = 8000;   // 8 s
 const POLL_TIMEOUT = 900000; // 15 min — high-priority tasks: 1-3 min, normal: up to 10 min
 
-export default function BatchChecker() {
+export default function BatchChecker({ onCostUpdate }) {
     const [keywordsText, setKeywordsText] = useState('');
     const [domain, setDomain] = useState('');
     const [location, setLocation] = useState('');
@@ -108,6 +108,12 @@ export default function BatchChecker() {
                     const completedIds = new Set(completed.map(r => r.id));
                     pendingIdsRef.current = pendingIdsRef.current.filter(id => !completedIds.has(id));
 
+                    // Calculate total cost
+                    const totalCost = completed.reduce((sum, r) => sum + (r.cost || 0), 0);
+                    if (onCostUpdate && totalCost > 0) {
+                        onCostUpdate(totalCost);
+                    }
+
                     // Update completed slots in-place (preserves input order)
                     const completedMap = {};
                     completed.forEach(r => { completedMap[r.id] = r; });
@@ -121,6 +127,7 @@ export default function BatchChecker() {
                             found: done.rank !== null,
                             rank: done.rank,
                             url: done.url || null,
+                            cost: done.cost || 0,
                             error: null
                         };
                     }));

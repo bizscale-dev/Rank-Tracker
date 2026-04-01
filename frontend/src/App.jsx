@@ -18,6 +18,18 @@ function Dashboard({ session }) {
     const [activeTab, setActiveTab] = useState('single');
     const [isConnected, setIsConnected] = useState(null); // null = checking
     const [balance, setBalance] = useState(null);
+    const [lastCost, setLastCost] = useState(null);
+
+    const fetchBalance = async () => {
+        try {
+            const res = await rankAPI.getAccountInfo();
+            if (res.success && res.account?.money) {
+                setBalance(res.account.money.balance);
+            }
+        } catch (error) {
+            console.error('Failed to fetch balance:', error);
+        }
+    };
 
     useEffect(() => {
         rankAPI.testConnection()
@@ -26,6 +38,9 @@ function Dashboard({ session }) {
                 if (res.account?.balance != null) setBalance(res.account.balance);
             })
             .catch(() => setIsConnected(false));
+        
+        // Fetch full account info
+        fetchBalance();
     }, []);
 
     const handleLogout = async () => {
@@ -48,6 +63,16 @@ function Dashboard({ session }) {
                         {isConnected === null && <span className="status-badge">⏳ Connecting...</span>}
                         {isConnected === true && <span className="status-badge connected">✅ Connected</span>}
                         {isConnected === false && <span className="status-badge">⚠️ No Credentials</span>}
+                        {balance !== null && (
+                            <span className="status-badge balance">
+                                💰 Balance: ${balance.toFixed(2)}
+                            </span>
+                        )}
+                        {lastCost !== null && (
+                            <span className="status-badge cost">
+                                📊 Last Check: ${lastCost.toFixed(4)}
+                            </span>
+                        )}
                         <button onClick={handleLogout} className="btn-secondary" style={{ padding: '4px 12px', fontSize: '0.82rem', borderRadius: '999px' }}>
                             Logout
                         </button>
@@ -70,9 +95,9 @@ function Dashboard({ session }) {
                 </div>
 
                 {/* Tab Content */}
-                {activeTab === 'single' && <RankChecker />}
-                {activeTab === 'batch' && <BatchChecker />}
-                {activeTab === 'competitors' && <CompetitorAnalysis />}
+                {activeTab === 'single' && <RankChecker onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
+                {activeTab === 'batch' && <BatchChecker onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
+                {activeTab === 'competitors' && <CompetitorAnalysis onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
 
 
                 <footer className="footer">

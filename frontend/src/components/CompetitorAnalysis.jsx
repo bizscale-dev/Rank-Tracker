@@ -2,7 +2,7 @@ import { useState } from 'react';
 import rankAPI from '../services/api';
 import LocationSearch from './LocationSearch';
 
-export default function CompetitorAnalysis() {
+export default function CompetitorAnalysis({ onCostUpdate }) {
     const [keyword, setKeyword] = useState('');
     const [location, setLocation] = useState('');
     const [domainsText, setDomainsText] = useState('');
@@ -30,6 +30,9 @@ export default function CompetitorAnalysis() {
                 device
             });
             setResult(data);
+            if (onCostUpdate && data.cost) {
+                onCostUpdate(data.cost);
+            }
         } catch (err) {
             setError(err.message);
         } finally {

@@ -205,7 +205,7 @@ router.post('/batch', async (req, res) => {
 // ─── GET /api/rank/status ─────────────────────────────────────────────────────
 // Frontend polls this to check if specific rows are completed.
 // Query: ?ids=uuid1,uuid2,uuid3
-// Returns: { rows: [{ id, status, rank, url, keyword }] }
+// Returns: { rows: [{ id, status, rank, url, keyword, cost }] }
 router.get('/status', async (req, res) => {
     try {
         const ids = (req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -214,7 +214,7 @@ router.get('/status', async (req, res) => {
         const sb = getSupabase();
         const { data, error } = await sb
             .from('rank_checks')
-            .select('id, status, rank, url, keyword')
+            .select('id, status, rank, url, keyword, cost')
             .in('id', ids);
 
         if (error) return res.status(500).json({ success: false, error: error.message });
@@ -257,7 +257,8 @@ router.get('/sync', async (req, res) => {
                     .update({
                         status: 'completed',
                         rank: rankResult.found ? rankResult.position : null,
-                        url: rankResult.url || null
+                        url: rankResult.url || null,
+                        cost: taskResult.cost || 0
                     })
                     .eq('id', row.id);
 

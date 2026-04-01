@@ -135,6 +135,11 @@ a:hover {
   color: #5fd9c4;
 }
 
+.status-badge.cost {
+  border-color: rgba(234, 179, 8, 0.4);
+  color: #fbbf24;
+}
+
 /* ── Tabs ───────────────────────────────────────── */
 .tabs {
   display: flex;
