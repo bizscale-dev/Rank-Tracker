@@ -42,7 +42,7 @@ export default function Login() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
-                            placeholder="usman@businessupscalers.com"
+                            placeholder="Email Address"
                         />
                     </div>
                     <div className="form-group">
@@ -52,6 +52,7 @@ export default function Login() {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             required
+                            placeholder="Password"
                         />
                     </div>
                     <button type="submit" className="login-button" disabled={loading}>
