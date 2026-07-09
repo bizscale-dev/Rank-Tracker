@@ -45,32 +45,39 @@ class DataForSEOService {
     /**
      * Standard API — POST one or more keyword tasks in a single request.
      * Much cheaper than Live: $0.0006/task vs $0.03/task.
+     * IMPORTANT: Always sends location_name + location_coordinate, NEVER location_code
      *
-     * @param {Array<{ keyword, location, device, tag? }>} tasks
+     * @param {Array<{ keyword, location, device, tag?, latitude?, longitude? }>} tasks
      * @returns {Array<{ taskId, keyword, tag }>}
      */
     async postTasks(tasks) {
-        const isCode = (loc) => typeof loc === 'number';
         const payload = tasks.map(t => {
-            const normalizedLoc = isCode(t.location)
-                ? t.location
+            // Always normalize as string (remove spaces after commas)
+            const normalizedLoc = typeof t.location === 'number'
+                ? t.location.toString()
                 : (t.location || '').replace(/,\s+/g, ',');
-            return {
+            
+            // Build base payload with location_name (NEVER location_code)
+            const taskPayload = {
                 keyword: t.keyword,
-                ...(isCode(t.location)
-                    ? { location_code: normalizedLoc }
-                    : { location_name: normalizedLoc }),
+                location_name: normalizedLoc,  // Always use location_name, not location_code
                 language_code: 'en',
                 device: t.device || 'desktop',
                 os: (t.device || 'desktop') === 'mobile' ? 'android' : undefined,
                 depth: 100,       // top 100 sufficient for rank checking (faster than 200)
                 priority: 2,      // high priority: 1-3 min vs normal 5-10 min
-                // tag stores domain so getTaskResult can use it for domain matching
-                tag: t.tag || ''
+                tag: t.tag || ''  // tag stores domain so getTaskResult can use it for domain matching
             };
+
+            // Add location_coordinate if latitude/longitude provided (for more precise targeting)
+            if (t.latitude !== undefined && t.longitude !== undefined) {
+                taskPayload.location_coordinate = `${t.latitude},${t.longitude}`;
+            }
+
+            return taskPayload;
         });
 
-        console.log(`📤 DataForSEO task_post: ${tasks.length} keyword(s)`);
+        console.log(`📤 DataForSEO task_post: ${tasks.length} keyword(s) with location_name + location_coordinate`);
         const response = await this.client.post('/serp/google/organic/task_post', payload);
 
         if (response.data.status_code !== 20000) {
@@ -130,27 +137,36 @@ class DataForSEOService {
 
     /**
      * Get SERP results for a keyword + location
+     * IMPORTANT: Always sends location_name + location_coordinate, NEVER location_code
      * @param {string}         keyword
-     * @param {number|string}  location - numeric location_code OR location_name string (e.g. "Houston, Texas, United States")
+     * @param {number|string}  location - location name string (e.g. "Houston, Texas, United States")
      * @param {string}         device
      * @param {number}         depth
+     * @param {number}         latitude - optional latitude for more precise location
+     * @param {number}         longitude - optional longitude for more precise location
      */
-    async getSearchResults(keyword, location, device = 'desktop', depth = 200) {
-        const isCode = typeof location === 'number';
-        // DataForSEO requires location_name WITHOUT spaces after commas
-        // e.g. "Houston,Texas,United States" not "Houston, Texas, United States"
-        const normalizedLocation = isCode ? location : location.replace(/,\s+/g, ',');
+    async getSearchResults(keyword, location, device = 'desktop', depth = 200, latitude, longitude) {
+        // Always normalize as string (remove spaces after commas)
+        const normalizedLocation = typeof location === 'number'
+            ? location.toString()
+            : (location || '').replace(/,\s+/g, ',');
+            
         try {
-            console.log(`📡 DataForSEO SERP request:`, { keyword, location: normalizedLocation, device });
+            console.log(`📡 DataForSEO SERP request:`, { keyword, location: normalizedLocation, device, coordinate: latitude && longitude ? `${latitude},${longitude}` : 'none' });
 
             const postData = [{
                 keyword,
-                ...(isCode ? { location_code: normalizedLocation } : { location_name: normalizedLocation }),
+                location_name: normalizedLocation,  // Always use location_name, not location_code
                 language_code: 'en',
                 device,
                 os: device === 'mobile' ? 'android' : undefined,
                 depth
             }];
+
+            // Add location_coordinate if provided
+            if (latitude !== undefined && longitude !== undefined) {
+                postData[0].location_coordinate = `${latitude},${longitude}`;
+            }
 
             const response = await this.client.post(
                 '/serp/google/organic/live/advanced',
@@ -186,7 +202,7 @@ class DataForSEOService {
                 }
             };
         } catch (error) {
-            this._handleError(error);
+            throw this._handleError(error);  // Explicitly throw the error
         }
     }
 
@@ -209,7 +225,7 @@ class DataForSEOService {
                 pricing: result.pricing
             };
         } catch (error) {
-            this._handleError(error);
+            throw this._handleError(error);  // Explicitly throw the error
         }
     }
 
@@ -224,6 +240,7 @@ class DataForSEOService {
             return false;
         }
     }
+    
 
     /**
      * Load ALL US city locations from DataForSEO and cache in memory.
@@ -289,6 +306,155 @@ class DataForSEOService {
             throw new Error('No response from DataForSEO. Check your internet connection.');
         } else {
             throw error;
+        }
+    }
+
+    /**
+     * Post GBP (Local Finder) tasks to DataForSEO
+     * IMPORTANT: Always sends location_name + location_coordinate, NEVER location_code
+     * @param {Array<{ keyword, location, device, tag?, latitude?, longitude? }>} tasks
+     * @returns {Array<{ taskId, keyword, tag }>}
+     */
+    async postGBPTasks(tasks) {
+        const payload = tasks.map(t => {
+            // Always normalize as string (remove spaces after commas)
+            const normalizedLoc = typeof t.location === 'number'
+                ? t.location.toString()
+                : (t.location || '').replace(/,\s+/g, ',');
+            
+            // Build base payload with location_name (NEVER location_code)
+            const taskPayload = {
+                keyword: t.keyword,
+                location_name: normalizedLoc,  // Always use location_name, not location_code
+                language_name: 'English',
+                depth: 100,
+                priority: 2,
+                tag: t.tag || ''
+            };
+
+            // Add location_coordinate if latitude/longitude provided (for more precise targeting)
+            if (t.latitude !== undefined && t.longitude !== undefined) {
+                taskPayload.location_coordinate = `${t.latitude},${t.longitude}`;
+            }
+
+            return taskPayload;
+        });
+
+        console.log(`📤 DataForSEO GBP task_post: ${tasks.length} keyword(s) with location_name + location_coordinate`);
+        const response = await this.client.post('/serp/google/local_finder/task_post', payload);
+
+        if (response.data.status_code !== 20000) {
+            throw new Error(`DataForSEO GBP task_post Error: ${response.data.status_message}`);
+        }
+
+        return response.data.tasks.map((task, i) => ({
+            taskId: task.id,
+            keyword: tasks[i].keyword,
+            tag: tasks[i].tag || ''
+        }));
+    }
+
+    /**
+     * Get GBP (Local Finder) task result
+     * @param {string} taskId
+     */
+    async getGBPTaskResult(taskId) {
+        console.log(`📥 DataForSEO GBP task_get: ${taskId}`);
+        const response = await this.client.get(
+            `/serp/google/local_finder/task_get/advanced/${taskId}`
+        );
+
+        if (response.data.status_code !== 20000) {
+            throw new Error(`DataForSEO GBP task_get Error: ${response.data.status_message}`);
+        }
+
+        const task = response.data.tasks?.[0];
+        if (!task) throw new Error('No task returned from DataForSEO');
+
+        // 40602 = task is still being processed
+        if (task.status_code === 40602) {
+            return { ready: false };
+        }
+
+        if (task.status_code !== 20000) {
+            throw new Error(`Task Error: ${task.status_message}`);
+        }
+
+        const result = task.result?.[0];
+        if (!result) throw new Error('No result data for task');
+
+        return {
+            ready: true,
+            keyword: task.data?.keyword || '',
+            tag: task.data?.tag || '',
+            businesses: result.items || [],
+            totalResults: result.se_results_count || 0,
+            cost: task.cost || 0
+        };
+    }
+
+    /**
+     * Get GBP live search results for a keyword + location
+     * IMPORTANT: Always sends location_name + location_coordinate, NEVER location_code
+     * @param {string}         keyword
+     * @param {number|string}  location - location name string
+     * @param {number}         latitude - optional latitude for more precise location
+     * @param {number}         longitude - optional longitude for more precise location
+     */
+    async getGBPSearchResults(keyword, location, latitude, longitude) {
+        // Always normalize as string (remove spaces after commas)
+        const normalizedLocation = typeof location === 'number'
+            ? location.toString()
+            : (location || '').replace(/,\s+/g, ',');
+            
+        try {
+            console.log(`📡 DataForSEO GBP live request:`, { keyword, location: normalizedLocation, coordinate: latitude && longitude ? `${latitude},${longitude}` : 'none' });
+
+            const postData = [{
+                keyword,
+                location_name: normalizedLocation,  // Always use location_name, not location_code
+                language_name: 'English',
+                depth: 100
+            }];
+
+            // Add location_coordinate if provided
+            if (latitude !== undefined && longitude !== undefined) {
+                postData[0].location_coordinate = `${latitude},${longitude}`;
+            }
+
+            const response = await this.client.post(
+                '/serp/google/local_finder/live/advanced',
+                postData
+            );
+
+            if (response.data.status_code !== 20000) {
+                throw new Error(`DataForSEO API Error: ${response.data.status_message}`);
+            }
+
+            const task = response.data.tasks[0];
+
+            if (task.status_code !== 20000) {
+                throw new Error(`Task Error: ${task.status_message}`);
+            }
+
+            if (!task.result || task.result.length === 0) {
+                throw new Error('No results returned from DataForSEO');
+            }
+
+            const result = task.result[0];
+
+            return {
+                success: true,
+                businesses: result.items || [],
+                totalResults: result.se_results_count || 0,
+                searchMetadata: {
+                    keyword,
+                    location,
+                    total_cost: task.cost || 0
+                }
+            };
+        } catch (error) {
+            throw this._handleError(error);  // Explicitly throw the error
         }
     }
 }

@@ -22,11 +22,39 @@ function getService() {
     return new DataForSEOService(login, password);
 }
 
-// ─── Helper: resolve location ─────────────────────────────────────────────────
+// ─── Helper: resolve location and get coordinates ─────────────────────────────
+// Always prefer location_name with coordinates over location_code
+function resolveLocationWithCoordinates(location) {
+    const { getLocationWithCoordinates } = require('../data/locations');
+    
+    if (!location) return { locationName: '', latitude: undefined, longitude: undefined };
+    
+    // If it's a number, warn (backward compat)
+    if (typeof location === 'number') {
+        console.warn('⚠️  Using numeric location code:', location, '- Consider using location_name instead');
+        return { locationName: location.toString(), latitude: undefined, longitude: undefined };
+    }
+    
+    // Pass location as-is to the lookup function (it handles both formats with/without spaces)
+    const locData = getLocationWithCoordinates(location);
+    
+    if (locData) {
+        console.log(`✅ Location matched: ${location} → lat: ${locData.latitude}, lng: ${locData.longitude}`);
+        return { 
+            locationName: locData.value,  // Use the database format with spaces
+            latitude: locData.latitude, 
+            longitude: locData.longitude 
+        };
+    }
+    
+    console.warn(`⚠️  Location not found in database: ${location}. Sending without coordinates.`);
+    // Return as-is but without coordinates
+    return { locationName: location, latitude: undefined, longitude: undefined };
+}
+
+// Legacy helper for backward compatibility
 function resolveLocation(location) {
-    return typeof location === 'number'
-        ? location
-        : (getLocationCode(location) || location);
+    return resolveLocationWithCoordinates(location).locationName;
 }
 
 // ─── GET /api/rank/test ───────────────────────────────────────────────────────
@@ -109,9 +137,10 @@ router.post('/check', async (req, res) => {
         const supabaseId = insertedRow.id;
 
         // 2. Post to DataForSEO
-        const resolvedLocation = resolveLocation(location);
+        const locInfo = resolveLocationWithCoordinates(location);
+
         const service = getService();
-        const posted = await service.postTasks([{ keyword, location: resolvedLocation, device, tag: domain }]);
+        const posted = await service.postTasks([{ keyword, location: locInfo.locationName, device, tag: domain, latitude: locInfo.latitude, longitude: locInfo.longitude }]);
         const taskId = posted[0].taskId;
 
         // 3. Update row with task_id (no updated_at — column may not exist)
@@ -170,10 +199,11 @@ router.post('/batch', async (req, res) => {
         }
 
         // 2. Post all keywords in ONE DataForSEO request
-        const resolvedLocation = resolveLocation(location);
+        const locInfo = resolveLocationWithCoordinates(location);
+
         const service = getService();
         const posted = await service.postTasks(
-            limitedKeywords.map(keyword => ({ keyword, location: resolvedLocation, device, tag: domain }))
+            limitedKeywords.map(keyword => ({ keyword, location: locInfo.locationName, device, tag: domain, latitude: locInfo.latitude, longitude: locInfo.longitude }))
         );
 
         // 3. Update each row with its task_id (no updated_at)
@@ -320,9 +350,9 @@ router.post('/competitors', async (req, res) => {
         }
 
         const limitedDomains = domains.slice(0, 5);
-        const resolvedLocation = resolveLocation(location);
+        const locInfo = resolveLocationWithCoordinates(location);
         const service = getService();
-        const serpData = await service.getSearchResults(keyword, resolvedLocation, device);
+        const serpData = await service.getSearchResults(keyword, locInfo.locationName, device, 200, locInfo.latitude, locInfo.longitude);
         const topResults = getTopResults(serpData.organicResults, 20);
 
         const competitors = limitedDomains.map(domain => {
@@ -338,6 +368,257 @@ router.post('/competitors', async (req, res) => {
         });
 
         res.json({ success: true, keyword, location, device, competitors, topResults, cost: serpData.searchMetadata.total_cost });
+    } catch (error) {
+        res.status(error.status || 500).json({ success: false, error: error.message });
+    }
+});
+
+// ─── POST /api/rank/gbp/check ─────────────────────────────────────────────────
+// GBP (Local Finder) single check
+router.post('/gbp/check', async (req, res) => {
+    try {
+        const { keyword, location, business_name } = req.body;
+        if (!keyword || !location || !business_name) {
+            return res.status(400).json({ success: false, error: 'keyword, location, and business_name are required' });
+        }
+
+        const reqKey = `gbp-check:${keyword}:${location}:${business_name}`;
+        if (activeRequests.has(reqKey)) {
+            console.warn(`Duplicate /gbp/check request blocked: ${reqKey}`);
+            return res.status(429).json({ success: false, error: 'Please wait. Request is already processing.' });
+        }
+        activeRequests.add(reqKey);
+        cleanupRequest(reqKey);
+
+        const sb = getSupabase();
+
+        // 1. Insert pending row into gbp_checks table
+        const { data: insertedRow, error: insertError } = await sb
+            .from('gbp_checks')
+            .insert([{ keyword, business_name, location, status: 'pending' }])
+            .select()
+            .single();
+
+        if (insertError) {
+            console.error('Supabase GBP insert error:', insertError.message);
+            return res.status(500).json({ success: false, error: 'DB insert failed: ' + insertError.message });
+        }
+
+        const supabaseId = insertedRow.id;
+
+        // 2. Post to DataForSEO GBP
+        const locInfo = resolveLocationWithCoordinates(location);
+
+        const service = getService();
+        const posted = await service.postGBPTasks([{ keyword, location: locInfo.locationName, tag: business_name, latitude: locInfo.latitude, longitude: locInfo.longitude }]);
+        const taskId = posted[0].taskId;
+
+        // 3. Update row with task_id
+        const { error: updateError } = await sb
+            .from('gbp_checks')
+            .update({ task_id: taskId })
+            .eq('id', supabaseId);
+
+        if (updateError) {
+            console.error('Supabase GBP task_id update error:', updateError.message);
+        }
+
+        res.json({ success: true, supabaseId, taskId, keyword, business_name, location });
+
+    } catch (error) {
+        res.status(error.status || 500).json({ success: false, error: error.message });
+    }
+});
+
+// ─── POST /api/rank/gbp/batch ─────────────────────────────────────────────────
+// GBP batch check
+router.post('/gbp/batch', async (req, res) => {
+    try {
+        const { keywords, location, business_name } = req.body;
+        if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+            return res.status(400).json({ success: false, error: 'keywords array is required' });
+        }
+        if (!location || !business_name) {
+            return res.status(400).json({ success: false, error: 'location and business_name are required' });
+        }
+
+        const limitedKeywords = keywords.slice(0, 100);
+
+        const reqKey = `gbp-batch:${limitedKeywords.join('|')}:${location}:${business_name}`;
+        if (activeRequests.has(reqKey)) {
+            console.warn(`Duplicate /gbp/batch request blocked.`);
+            return res.status(429).json({ success: false, error: 'Please wait. Request is already processing.' });
+        }
+        activeRequests.add(reqKey);
+        cleanupRequest(reqKey);
+
+        const sb = getSupabase();
+
+        // 1. Insert rows
+        const { data: insertedRows, error: insertError } = await sb
+            .from('gbp_checks')
+            .insert(limitedKeywords.map(keyword => ({ keyword, business_name, location, status: 'pending' })))
+            .select();
+
+        if (insertError) {
+            console.error('Supabase GBP batch insert error:', insertError.message);
+            return res.status(500).json({ success: false, error: 'DB insert failed: ' + insertError.message });
+        }
+
+        // 2. Post all keywords
+        const locInfo = resolveLocationWithCoordinates(location);
+
+        const service = getService();
+        const posted = await service.postGBPTasks(
+            limitedKeywords.map(keyword => ({ keyword, location: locInfo.locationName, tag: business_name, latitude: locInfo.latitude, longitude: locInfo.longitude }))
+        );
+
+        // 3. Update rows with task_ids
+        await Promise.all(
+            insertedRows.map((row, i) =>
+                sb.from('gbp_checks').update({ task_id: posted[i].taskId }).eq('id', row.id)
+                    .then(({ error }) => { if (error) console.error(`GBP task_id update error:`, error.message); })
+            )
+        );
+
+        res.json({
+            success: true,
+            taskIds: insertedRows.map((row, i) => ({
+                supabaseId: row.id,
+                taskId: posted[i].taskId,
+                keyword: limitedKeywords[i]
+            })),
+            business_name,
+            location,
+            totalKeywords: posted.length
+        });
+
+    } catch (error) {
+        res.status(error.status || 500).json({ success: false, error: error.message });
+    }
+});
+
+// ─── GET /api/rank/gbp/results/:taskId ────────────────────────────────────────
+// ─── GET /api/rank/gbp/results/:taskId ────────────────────────────────────────
+// Get GBP ranking from Supabase
+router.get('/gbp/results/:taskId', async (req, res) => {
+    try {
+        const { taskId } = req.params;
+        if (!taskId) return res.status(400).json({ success: false, error: 'taskId is required' });
+
+        const sb = getSupabase();
+        
+        // Query for results stored with this taskId
+        const { data: rows, error: queryError } = await sb
+            .from('gbp_checks')
+            .select('id, rank, cost, status, keyword')
+            .eq('task_id', taskId)
+            .limit(1);
+
+        if (queryError) {
+            return res.status(500).json({ success: false, error: queryError.message });
+        }
+
+        if (!rows || rows.length === 0) {
+            return res.json({ ready: false });
+        }
+
+        const row = rows[0];
+
+        res.json({
+            ready: true,
+            keyword: row.keyword || '',
+            rank: row.rank,
+            found: row.rank !== null,
+            cost: row.cost || 0,
+            status: row.status
+        });
+    } catch (error) {
+        res.status(error.status || 500).json({ success: false, error: error.message });
+    }
+});
+
+// ─── GET /api/rank/gbp/status ───────────────────────────────────────────────────
+// Frontend polls this to check if specific GBP rows are completed.
+// Query: ?ids=uuid1,uuid2,uuid3
+// Returns: { rows: [{ id, status, task_id, keyword, cost }] }
+router.get('/gbp/status', async (req, res) => {
+    try {
+        const ids = (req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (ids.length === 0) return res.json({ success: true, rows: [] });
+
+        const sb = getSupabase();
+        const { data, error } = await sb
+            .from('gbp_checks')
+            .select('id, status, task_id, keyword, cost')
+            .in('id', ids);
+
+        if (error) return res.status(500).json({ success: false, error: error.message });
+        res.json({ success: true, rows: data || [] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ─── GET /api/rank/gbp/sync ─────────────────────────────────────────────────────
+// Syncs all pending GBP rows: extracts ranking position from DataForSEO
+router.get('/gbp/sync', async (req, res) => {
+    try {
+        const service = getService();
+        const sb = getSupabase();
+
+        const { data: pendingRows, error: fetchError } = await sb
+            .from('gbp_checks')
+            .select('id, task_id, business_name')
+            .eq('status', 'pending')
+            .not('task_id', 'is', null);
+
+        if (fetchError) return res.status(500).json({ success: false, error: fetchError.message });
+        if (!pendingRows || pendingRows.length === 0) return res.json({ success: true, synced: 0, stillPending: 0 });
+
+        let synced = 0;
+        let stillPending = 0;
+
+        await Promise.all(pendingRows.map(async (row) => {
+            try {
+                const taskResult = await service.getGBPTaskResult(row.task_id);
+                if (!taskResult.ready) { stillPending++; return; }
+
+                // Find ranking position of the business in the results
+                // Search for business_name in the businesses array
+                let rankPosition = null;
+                if (taskResult.businesses && Array.isArray(taskResult.businesses)) {
+                    rankPosition = taskResult.businesses.findIndex(b => 
+                        (b.title || b.name || '').toLowerCase().includes(row.business_name.toLowerCase())
+                    ) + 1; // +1 because findIndex returns 0-based
+                    
+                    // If not found or rank is 0, set to null
+                    if (rankPosition === 0) rankPosition = null;
+                }
+
+                const { error: updateError } = await sb
+                    .from('gbp_checks')
+                    .update({
+                        status: 'completed',
+                        rank: rankPosition,
+                        cost: taskResult.cost || 0
+                    })
+                    .eq('id', row.id);
+
+                if (updateError) {
+                    console.error(`GBP Sync update error for ${row.id}:`, updateError.message);
+                    stillPending++;
+                } else {
+                    synced++;
+                    console.log(`✅ GBP Sync completed: ${row.business_name} - Rank: ${rankPosition || 'Not found'}`);
+                }
+            } catch (err) {
+                console.error(`GBP Sync error for task ${row.task_id}:`, err.message);
+                stillPending++;
+            }
+        }));
+
+        res.json({ success: true, synced, stillPending });
     } catch (error) {
         res.status(error.status || 500).json({ success: false, error: error.message });
     }

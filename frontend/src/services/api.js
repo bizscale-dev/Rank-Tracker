@@ -63,6 +63,22 @@ const rankAPI = {
 
     // Competitor analysis (uses Live API)
     competitorAnalysis: (payload) => client.post('/rank/competitors', payload).then(r => r.data),
+
+    // GBP (Local Finder) single check
+    checkGBPRank: (payload) => client.post('/rank/gbp/check', payload).then(r => r.data),
+
+    // GBP batch check
+    batchGBPCheck: (payload) => client.post('/rank/gbp/batch', payload).then(r => r.data),
+
+    // Get GBP results
+    getGBPResults: (taskId) => client.get(`/rank/gbp/results/${taskId}`).then(r => r.data),
+
+    // Check GBP status
+    checkGBPStatus: (ids) =>
+        client.get('/rank/gbp/status', { params: { ids: ids.join(',') } }).then(r => r.data),
+
+    // Sync GBP pending checks
+    syncGBPPending: () => client.get('/rank/gbp/sync').then(r => r.data),
 };
 
 export default rankAPI;

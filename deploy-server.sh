@@ -64,6 +64,7 @@ FRONTEND_URL=http://173.212.250.224
 # Supabase
 SUPABASE_URL=https://moaywhuurlelsptpdlql.supabase.co
 SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vYXl3aHV1cmxlbHNwdHBkbHFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NTI5MzksImV4cCI6MjA4ODEyODkzOX0.OnjL4SMbSTy_Xl8tMThNfNb2HAEkzqXmDCG5NnKxBeI
+JWT_SECRET=p6/KEkrrAVqxY4ds+Zlo0ieFDGTkB5Lldaba8tE5xRbAW+eSHUVhGxNDLTKS9GP1Nzdi1ux8yznVu7fkfyunTg==
 EOF
 
 # Setup Frontend
