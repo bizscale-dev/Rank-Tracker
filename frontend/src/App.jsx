@@ -5,29 +5,49 @@ import './App.css';
 import RankChecker from './components/RankChecker';
 import BatchChecker from './components/BatchChecker';
 import CompetitorAnalysis from './components/CompetitorAnalysis';
+import GBPRankChecker from './components/GBPRankChecker';
+import BatchGBPChecker from './components/BatchGBPChecker';
 import Login from './components/Login';
 import rankAPI from './services/api';
 
 const TABS = [
+    { id: 'web', label: '🌐 Web Rankings', category: 'web' },
+    { id: 'gbp', label: '📍 GBP Rankings', category: 'gbp' },
+    { id: 'competitors', label: '⚔️ Competitors', category: 'competitors' },
+];
+
+const WEB_TABS = [
     { id: 'single', label: '🎯 Single Check' },
     { id: 'batch', label: '📦 Batch Check' },
-    { id: 'competitors', label: '⚔️ Competitors' },
+];
+
+const GBP_TABS = [
+    { id: 'single', label: '🎯 Single Check' },
+    { id: 'batch', label: '📦 Batch Check' },
 ];
 
 function Dashboard({ session }) {
-    const [activeTab, setActiveTab] = useState('single');
-    const [isConnected, setIsConnected] = useState(null); // null = checking
+    const [activeTab, setActiveTab] = useState('web');
+    const [activeWebTab, setActiveWebTab] = useState('single');
+    const [activeGBPTab, setActiveGBPTab] = useState('single');
+    const [isConnected, setIsConnected] = useState(null);
     const [balance, setBalance] = useState(null);
+    const [currency, setCurrency] = useState('USD');
     const [lastCost, setLastCost] = useState(null);
+    const [refreshingBalance, setRefreshingBalance] = useState(false);
 
     const fetchBalance = async () => {
         try {
+            setRefreshingBalance(true);
             const res = await rankAPI.getAccountInfo();
             if (res.success && res.account?.money) {
                 setBalance(res.account.money.balance);
+                setCurrency(res.account.money.currency || 'USD');
             }
         } catch (error) {
             console.error('Failed to fetch balance:', error);
+        } finally {
+            setRefreshingBalance(false);
         }
     };
 
@@ -35,12 +55,20 @@ function Dashboard({ session }) {
         rankAPI.testConnection()
             .then(res => {
                 setIsConnected(res.success);
-                if (res.account?.balance != null) setBalance(res.account.balance);
+                if (res.account?.balance != null) {
+                    setBalance(res.account.balance);
+                    setCurrency(res.account.currency || 'USD');
+                }
             })
             .catch(() => setIsConnected(false));
         
         // Fetch full account info
         fetchBalance();
+
+        // Refresh balance every 30 seconds
+        const balanceInterval = setInterval(fetchBalance, 30000);
+        
+        return () => clearInterval(balanceInterval);
     }, []);
 
     const handleLogout = async () => {
@@ -65,7 +93,7 @@ function Dashboard({ session }) {
                         {isConnected === false && <span className="status-badge">⚠️ No Credentials</span>}
                         {balance !== null && (
                             <span className="status-badge balance">
-                                💰 Balance: ${balance.toFixed(2)}
+                                💰 Balance: ${balance.toFixed(2)} {currency}
                             </span>
                         )}
                         {lastCost !== null && (
@@ -73,13 +101,22 @@ function Dashboard({ session }) {
                                 📊 Last Check: ${lastCost.toFixed(4)}
                             </span>
                         )}
+                        <button 
+                            onClick={fetchBalance}
+                            disabled={refreshingBalance}
+                            className="btn-secondary" 
+                            style={{ padding: '4px 12px', fontSize: '0.82rem', borderRadius: '999px' }}
+                            title="Refresh balance from DataForSEO"
+                        >
+                            {refreshingBalance ? '⟳ Updating...' : '⟳ Refresh'}
+                        </button>
                         <button onClick={handleLogout} className="btn-secondary" style={{ padding: '4px 12px', fontSize: '0.82rem', borderRadius: '999px' }}>
                             Logout
                         </button>
                     </div>
                 </header>
 
-                {/* Tabs */}
+                {/* Main Tabs */}
                 <div className="tabs" role="tablist">
                     {TABS.map(tab => (
                         <button
@@ -87,16 +124,56 @@ function Dashboard({ session }) {
                             role="tab"
                             aria-selected={activeTab === tab.id}
                             className={`tab ${activeTab === tab.id ? 'active' : ''}`}
-                            onClick={() => setActiveTab(tab.id)}
+                            onClick={() => {
+                                setActiveTab(tab.id);
+                                if (tab.category === 'web') setActiveWebTab('single');
+                                if (tab.category === 'gbp') setActiveGBPTab('single');
+                            }}
                         >
                             {tab.label}
                         </button>
                     ))}
                 </div>
 
+                {/* Web Rankings Sub-tabs */}
+                {activeTab === 'web' && (
+                    <div className="sub-tabs" role="tablist">
+                        {WEB_TABS.map(tab => (
+                            <button
+                                key={tab.id}
+                                role="tab"
+                                aria-selected={activeWebTab === tab.id}
+                                className={`sub-tab ${activeWebTab === tab.id ? 'active' : ''}`}
+                                onClick={() => setActiveWebTab(tab.id)}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* GBP Rankings Sub-tabs */}
+                {activeTab === 'gbp' && (
+                    <div className="sub-tabs" role="tablist">
+                        {GBP_TABS.map(tab => (
+                            <button
+                                key={tab.id}
+                                role="tab"
+                                aria-selected={activeGBPTab === tab.id}
+                                className={`sub-tab ${activeGBPTab === tab.id ? 'active' : ''}`}
+                                onClick={() => setActiveGBPTab(tab.id)}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
                 {/* Tab Content */}
-                {activeTab === 'single' && <RankChecker onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
-                {activeTab === 'batch' && <BatchChecker onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
+                {activeTab === 'web' && activeWebTab === 'single' && <RankChecker onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
+                {activeTab === 'web' && activeWebTab === 'batch' && <BatchChecker onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
+                {activeTab === 'gbp' && activeGBPTab === 'single' && <GBPRankChecker onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
+                {activeTab === 'gbp' && activeGBPTab === 'batch' && <BatchGBPChecker onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
                 {activeTab === 'competitors' && <CompetitorAnalysis onCostUpdate={(cost) => { setLastCost(cost); fetchBalance(); }} />}
 
 
