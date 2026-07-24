@@ -22,39 +22,74 @@ function getService() {
     return new DataForSEOService(login, password);
 }
 
+// ─── Helper: geocode a location string via OpenStreetMap Nominatim ────────────
+// Used as a fallback when the location isn't in our static US_LOCATIONS list.
+const _geocodeCache = new Map();
+async function geocodeLocation(location) {
+    if (_geocodeCache.has(location)) return _geocodeCache.get(location);
+
+    try {
+        const axios = require('axios');
+        const response = await axios.get('https://nominatim.openstreetmap.org/search', {
+            params: { q: location, format: 'json', limit: 1, countrycodes: 'us' },
+            headers: { 'User-Agent': 'RankTracker/1.0' },
+            timeout: 5000
+        });
+
+        const result = response.data && response.data[0];
+        const coords = result
+            ? { latitude: parseFloat(result.lat), longitude: parseFloat(result.lon) }
+            : null;
+
+        _geocodeCache.set(location, coords);
+        return coords;
+    } catch (err) {
+        console.warn(`⚠️  Geocoding failed for "${location}":`, err.message);
+        _geocodeCache.set(location, null);
+        return null;
+    }
+}
+
 // ─── Helper: resolve location and get coordinates ─────────────────────────────
 // Always prefer location_name with coordinates over location_code
-function resolveLocationWithCoordinates(location) {
+async function resolveLocationWithCoordinates(location) {
     const { getLocationWithCoordinates } = require('../data/locations');
-    
+
     if (!location) return { locationName: '', latitude: undefined, longitude: undefined };
-    
+
     // If it's a number, warn (backward compat)
     if (typeof location === 'number') {
         console.warn('⚠️  Using numeric location code:', location, '- Consider using location_name instead');
         return { locationName: location.toString(), latitude: undefined, longitude: undefined };
     }
-    
+
     // Pass location as-is to the lookup function (it handles both formats with/without spaces)
     const locData = getLocationWithCoordinates(location);
-    
+
     if (locData) {
         console.log(`✅ Location matched: ${location} → lat: ${locData.latitude}, lng: ${locData.longitude}`);
-        return { 
+        return {
             locationName: locData.value,  // Use the database format with spaces
-            latitude: locData.latitude, 
-            longitude: locData.longitude 
+            latitude: locData.latitude,
+            longitude: locData.longitude
         };
     }
-    
-    console.warn(`⚠️  Location not found in database: ${location}. Sending without coordinates.`);
+
+    // Not in our static list — fall back to geocoding it so we still send precise coordinates
+    const geocoded = await geocodeLocation(location);
+    if (geocoded) {
+        console.log(`✅ Location geocoded: ${location} → lat: ${geocoded.latitude}, lng: ${geocoded.longitude}`);
+        return { locationName: location, latitude: geocoded.latitude, longitude: geocoded.longitude };
+    }
+
+    console.warn(`⚠️  Location not found and geocoding failed: ${location}. Sending without coordinates.`);
     // Return as-is but without coordinates
     return { locationName: location, latitude: undefined, longitude: undefined };
 }
 
 // Legacy helper for backward compatibility
-function resolveLocation(location) {
-    return resolveLocationWithCoordinates(location).locationName;
+async function resolveLocation(location) {
+    return (await resolveLocationWithCoordinates(location)).locationName;
 }
 
 // ─── GET /api/rank/test ───────────────────────────────────────────────────────
@@ -137,7 +172,7 @@ router.post('/check', async (req, res) => {
         const supabaseId = insertedRow.id;
 
         // 2. Post to DataForSEO
-        const locInfo = resolveLocationWithCoordinates(location);
+        const locInfo = await resolveLocationWithCoordinates(location);
 
         const service = getService();
         const posted = await service.postTasks([{ keyword, location: locInfo.locationName, device, tag: domain, latitude: locInfo.latitude, longitude: locInfo.longitude }]);
@@ -199,7 +234,7 @@ router.post('/batch', async (req, res) => {
         }
 
         // 2. Post all keywords in ONE DataForSEO request
-        const locInfo = resolveLocationWithCoordinates(location);
+        const locInfo = await resolveLocationWithCoordinates(location);
 
         const service = getService();
         const posted = await service.postTasks(
@@ -350,7 +385,7 @@ router.post('/competitors', async (req, res) => {
         }
 
         const limitedDomains = domains.slice(0, 5);
-        const locInfo = resolveLocationWithCoordinates(location);
+        const locInfo = await resolveLocationWithCoordinates(location);
         const service = getService();
         const serpData = await service.getSearchResults(keyword, locInfo.locationName, device, 200, locInfo.latitude, locInfo.longitude);
         const topResults = getTopResults(serpData.organicResults, 20);
@@ -407,7 +442,7 @@ router.post('/gbp/check', async (req, res) => {
         const supabaseId = insertedRow.id;
 
         // 2. Post to DataForSEO GBP
-        const locInfo = resolveLocationWithCoordinates(location);
+        const locInfo = await resolveLocationWithCoordinates(location);
 
         const service = getService();
         const posted = await service.postGBPTasks([{ keyword, location: locInfo.locationName, tag: business_name, latitude: locInfo.latitude, longitude: locInfo.longitude }]);
@@ -466,7 +501,7 @@ router.post('/gbp/batch', async (req, res) => {
         }
 
         // 2. Post all keywords
-        const locInfo = resolveLocationWithCoordinates(location);
+        const locInfo = await resolveLocationWithCoordinates(location);
 
         const service = getService();
         const posted = await service.postGBPTasks(
