@@ -176,7 +176,7 @@ router.post('/check', async (req, res) => {
 
         const service = getService();
         const locationCode = await service.getLocationCode(locInfo.locationName);
-        const posted = await service.postTasks([{ keyword, location: locationCode ?? locInfo.locationName, device, tag: domain }]);
+        const posted = await service.postTasks([{ keyword, location: locationCode ?? locInfo.locationName, device, tag: domain, latitude: locInfo.latitude, longitude: locInfo.longitude }]);
         const taskId = posted[0].taskId;
 
         // 3. Update row with task_id (no updated_at — column may not exist)
@@ -240,7 +240,7 @@ router.post('/batch', async (req, res) => {
         const service = getService();
         const locationCode = await service.getLocationCode(locInfo.locationName);
         const posted = await service.postTasks(
-            limitedKeywords.map(keyword => ({ keyword, location: locationCode ?? locInfo.locationName, device, tag: domain }))
+            limitedKeywords.map(keyword => ({ keyword, location: locationCode ?? locInfo.locationName, device, tag: domain, latitude: locInfo.latitude, longitude: locInfo.longitude }))
         );
 
         // 3. Update each row with its task_id (no updated_at)

@@ -57,7 +57,7 @@ class DataForSEOService {
                 ? t.location
                 : (t.location || '').replace(/,\s+/g, ',');
 
-            return {
+            const taskPayload = {
                 keyword: t.keyword,
                 ...(isCode(t.location)
                     ? { location_code: normalizedLoc }
@@ -69,6 +69,13 @@ class DataForSEOService {
                 priority: 2,      // high priority: 1-3 min vs normal 5-10 min
                 tag: t.tag || ''  // tag stores domain so getTaskResult can use it for domain matching
             };
+
+            // Add location_coordinate if latitude/longitude provided (for more precise targeting)
+            if (t.latitude !== undefined && t.longitude !== undefined) {
+                taskPayload.location_coordinate = `${t.latitude},${t.longitude}`;
+            }
+
+            return taskPayload;
         });
 
         console.log(`📤 DataForSEO task_post: ${tasks.length} keyword(s)`);
