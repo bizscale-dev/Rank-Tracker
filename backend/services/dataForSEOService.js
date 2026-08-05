@@ -51,16 +51,17 @@ class DataForSEOService {
      * @returns {Array<{ taskId, keyword, tag }>}
      */
     async postTasks(tasks) {
+        const isCode = (loc) => typeof loc === 'number';
         const payload = tasks.map(t => {
-            // Always normalize as string (remove spaces after commas)
-            const normalizedLoc = typeof t.location === 'number'
-                ? t.location.toString()
+            const normalizedLoc = isCode(t.location)
+                ? t.location
                 : (t.location || '').replace(/,\s+/g, ',');
-            
-            // Build base payload with location_name (NEVER location_code)
-            const taskPayload = {
+
+            return {
                 keyword: t.keyword,
-                location_name: normalizedLoc,  // Always use location_name, not location_code
+                ...(isCode(t.location)
+                    ? { location_code: normalizedLoc }
+                    : { location_name: normalizedLoc }),
                 language_code: 'en',
                 device: t.device || 'desktop',
                 os: (t.device || 'desktop') === 'mobile' ? 'android' : undefined,
@@ -68,16 +69,9 @@ class DataForSEOService {
                 priority: 2,      // high priority: 1-3 min vs normal 5-10 min
                 tag: t.tag || ''  // tag stores domain so getTaskResult can use it for domain matching
             };
-
-            // Add location_coordinate if latitude/longitude provided (for more precise targeting)
-            if (t.latitude !== undefined && t.longitude !== undefined) {
-                taskPayload.location_coordinate = `${t.latitude},${t.longitude}`;
-            }
-
-            return taskPayload;
         });
 
-        console.log(`📤 DataForSEO task_post: ${tasks.length} keyword(s) with location_name + location_coordinate`);
+        console.log(`📤 DataForSEO task_post: ${tasks.length} keyword(s)`);
         const response = await this.client.post('/serp/google/organic/task_post', payload);
 
         if (response.data.status_code !== 20000) {
@@ -296,6 +290,21 @@ class DataForSEOService {
         return cache
             .filter(loc => loc.display.toLowerCase().includes(q))
             .slice(0, 30);
+    }
+
+    /**
+     * Resolve a location_name (e.g. "Broomfield, Colorado, United States") to DataForSEO's
+     * canonical numeric location_code, using the same cached location list as searchUSLocations().
+     * Returns null if not found (caller should fall back to location_name).
+     */
+    async getLocationCode(locationName) {
+        if (!locationName) return null;
+        const cache = await this.loadUSLocations();
+        if (!cache) return null;
+        const normalize = (s) => s.toLowerCase().replace(/,\s*/g, ',').trim();
+        const target = normalize(locationName);
+        const match = cache.find(loc => normalize(loc.value) === target);
+        return match ? match.code : null;
     }
 
     _handleError(error) {
