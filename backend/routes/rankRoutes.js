@@ -130,7 +130,9 @@ router.get('/locations/search', async (req, res) => {
     try {
         const service = getService();
         const dfResults = await service.searchUSLocations(query);
-        if (dfResults) return res.json({ success: true, locations: dfResults, source: 'dataforseo' });
+        // An empty array means DataForSEO's own database has no match for this query —
+        // fall through to the static list instead of returning an empty result.
+        if (dfResults && dfResults.length > 0) return res.json({ success: true, locations: dfResults, source: 'dataforseo' });
     } catch {
         // fall through to static list
     }
