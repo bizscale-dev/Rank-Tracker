@@ -83,11 +83,18 @@ class DataForSEOService {
             throw new Error(`DataForSEO task_post Error: ${response.data.status_message}`);
         }
 
-        return response.data.tasks.map((task, i) => ({
-            taskId: task.id,
-            keyword: tasks[i].keyword,
-            tag: tasks[i].tag || ''
-        }));
+        // The overall request can succeed (status_code 20000) while individual tasks inside it
+        // are rejected (e.g. rate limited) — check each task's own status_code (20100 = Task Created)
+        // instead of assuming every task.id in the response was actually queued.
+        return response.data.tasks.map((task, i) => {
+            const created = task.status_code === 20100;
+            return {
+                taskId: created ? task.id : null,
+                keyword: tasks[i].keyword,
+                tag: tasks[i].tag || '',
+                error: created ? null : (task.status_message || `DataForSEO rejected task (status ${task.status_code})`)
+            };
+        });
     }
 
     /**

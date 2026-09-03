@@ -181,10 +181,14 @@ router.post('/check', async (req, res) => {
         const posted = await service.postTasks([{ keyword, location: locationCode ?? locInfo.locationName, device, tag: domain, latitude: locInfo.latitude, longitude: locInfo.longitude }]);
         const taskId = posted[0].taskId;
 
-        // 3. Update row with task_id (no updated_at — column may not exist)
+        // 3. Update the row — if DataForSEO rejected the task at submission (taskId null),
+        // mark it as an error immediately instead of leaving a phantom "pending" row that can never complete.
         const { error: updateError } = await sb
             .from('rank_checks')
-            .update({ task_id: taskId })
+            .update(taskId
+                ? { task_id: taskId }
+                : { status: 'error', url: posted[0].error || 'DataForSEO rejected the task at submission' }
+            )
             .eq('id', supabaseId);
 
         if (updateError) {
@@ -192,7 +196,7 @@ router.post('/check', async (req, res) => {
             // non-fatal — we still return supabaseId so frontend can fall back to /sync
         }
 
-        res.json({ success: true, supabaseId, taskId, keyword, domain, location, device });
+        res.json({ success: true, supabaseId, taskId, keyword, domain, location, device, error: posted[0].error || undefined });
 
     } catch (error) {
         res.status(error.status || 500).json({ success: false, error: error.message });
@@ -245,10 +249,14 @@ router.post('/batch', async (req, res) => {
             limitedKeywords.map(keyword => ({ keyword, location: locationCode ?? locInfo.locationName, device, tag: domain, latitude: locInfo.latitude, longitude: locInfo.longitude }))
         );
 
-        // 3. Update each row with its task_id (no updated_at)
+        // 3. Update each row — reject at submission (taskId null) becomes an immediate error row,
+        // not a phantom "pending" row that can never complete.
         await Promise.all(
             insertedRows.map((row, i) =>
-                sb.from('rank_checks').update({ task_id: posted[i].taskId }).eq('id', row.id)
+                sb.from('rank_checks').update(posted[i].taskId
+                    ? { task_id: posted[i].taskId }
+                    : { status: 'error', url: posted[i].error || 'DataForSEO rejected the task at submission' }
+                ).eq('id', row.id)
                     .then(({ error }) => { if (error) console.error(`task_id update error for ${row.id}:`, error.message); })
             )
         );
@@ -258,7 +266,8 @@ router.post('/batch', async (req, res) => {
             taskIds: insertedRows.map((row, i) => ({
                 supabaseId: row.id,
                 taskId: posted[i].taskId,
-                keyword: limitedKeywords[i]
+                keyword: limitedKeywords[i],
+                error: posted[i].error || undefined
             })),
             domain,
             location,
@@ -339,6 +348,14 @@ router.get('/sync', async (req, res) => {
                 }
             } catch (err) {
                 console.error(`Sync error for task ${row.task_id}:`, err.message);
+                // Unrecoverable at DataForSEO (rate limited, task not found, etc.) — mark as error
+                // instead of leaving the row stuck at "pending" forever, which would keep getting
+                // re-polled by every future /sync cycle indefinitely.
+                const { error: updateError } = await sb
+                    .from('rank_checks')
+                    .update({ status: 'error', url: err.message })
+                    .eq('id', row.id);
+                if (updateError) console.error(`Sync error-status update failed for ${row.id}:`, updateError.message);
                 stillPending++;
             }
         }));
