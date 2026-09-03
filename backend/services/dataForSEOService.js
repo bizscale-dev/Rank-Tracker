@@ -307,9 +307,12 @@ class DataForSEOService {
     }
 
     /**
-     * Resolve a location_name (e.g. "Broomfield, Colorado, United States") to DataForSEO's
-     * canonical numeric location_code, using the same cached location list as searchUSLocations().
-     * Returns null if not found (caller should fall back to location_name).
+     * Resolve a location name to DataForSEO's canonical numeric location_code, using the same
+     * cached location list as searchUSLocations(). Accepts either the full canonical form
+     * (e.g. "Broomfield, Colorado, United States") or the short "City, ST" form (e.g. "Glendale, CO")
+     * — matches against both the cache's `value` (full) and `display` (short) fields, since a city
+     * missing from our static list only ever produces the short form. Returns null if not found
+     * (caller should fall back to location_name).
      */
     async getLocationCode(locationName) {
         if (!locationName) return null;
@@ -317,7 +320,7 @@ class DataForSEOService {
         if (!cache) return null;
         const normalize = (s) => s.toLowerCase().replace(/,\s*/g, ',').trim();
         const target = normalize(locationName);
-        const match = cache.find(loc => normalize(loc.value) === target);
+        const match = cache.find(loc => normalize(loc.value) === target || normalize(loc.display) === target);
         return match ? match.code : null;
     }
 
