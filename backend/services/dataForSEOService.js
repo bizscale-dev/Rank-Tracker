@@ -51,18 +51,16 @@ class DataForSEOService {
      * @returns {Array<{ taskId, keyword, tag }>}
      */
     async postTasks(tasks) {
-        const isCode = (loc) => typeof loc === 'number';
         const payload = tasks.map(t => {
-            const normalizedLoc = isCode(t.location)
-                ? t.location
+            // Always normalize as string (remove spaces after commas), NEVER use location_code
+            const normalizedLoc = typeof t.location === 'number'
+                ? t.location.toString()
                 : (t.location || '').replace(/,\s+/g, ',');
 
             const taskPayload = {
                 keyword: t.keyword,
-                ...(isCode(t.location)
-                    ? { location_code: normalizedLoc }
-                    : { location_name: normalizedLoc }),
-                language_code: 'en',
+                location_name: normalizedLoc,  // Always use location_name, not location_code
+                language_name: 'English',
                 device: t.device || 'desktop',
                 os: (t.device || 'desktop') === 'mobile' ? 'android' : undefined,
                 depth: 100,       // top 100 sufficient for rank checking (faster than 200)
@@ -158,7 +156,7 @@ class DataForSEOService {
             const postData = [{
                 keyword,
                 location_name: normalizedLocation,  // Always use location_name, not location_code
-                language_code: 'en',
+                language_name: 'English',
                 device,
                 os: device === 'mobile' ? 'android' : undefined,
                 depth
