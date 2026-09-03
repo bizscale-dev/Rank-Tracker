@@ -100,6 +100,24 @@ class DataForSEOService {
     }
 
     /**
+     * Standard API — Get the set of organic task IDs that are actually ready, in ONE request.
+     * Free/no per-call cost. Use this to avoid calling task_get on every pending task on every
+     * poll cycle -- that's what was driving DataForSEO's per-minute rate limit into the ground.
+     * @returns {Set<string>} ready task IDs (empty set on any failure -- caller falls back safely)
+     */
+    async getReadyTaskIds() {
+        try {
+            const response = await this.client.get('/serp/google/organic/tasks_ready');
+            if (response.data.status_code !== 20000) return new Set();
+            const ready = response.data.tasks?.[0]?.result || [];
+            return new Set(ready.map(t => t.id));
+        } catch (err) {
+            console.warn('⚠️  tasks_ready check failed, falling back to polling every task:', err.message);
+            return null; // signal "couldn't check" so caller polls everything as before
+        }
+    }
+
+    /**
      * Standard API — Fetch result for a single task ID.
      * Returns { ready: false } while DataForSEO is still processing (status 40602).
      * Returns { ready: true, keyword, organicResults, cost, tag } when done.

@@ -319,10 +319,18 @@ router.get('/sync', async (req, res) => {
         if (fetchError) return res.status(500).json({ success: false, error: fetchError.message });
         if (!pendingRows || pendingRows.length === 0) return res.json({ success: true, synced: 0, stillPending: 0 });
 
-        let synced = 0;
-        let stillPending = 0;
+        // Check which tasks are actually ready in ONE request, instead of calling task_get on
+        // every pending row every cycle -- that fan-out was what drove DataForSEO's per-minute
+        // rate limit into the ground. `null` means the check itself failed -- fall back to
+        // polling every row as before rather than silently stalling all syncing.
+        const readyIds = await service.getReadyTaskIds();
+        const rowsToCheck = readyIds ? pendingRows.filter(row => readyIds.has(row.task_id)) : pendingRows;
+        const stillPendingFromSkip = readyIds ? pendingRows.length - rowsToCheck.length : 0;
 
-        await Promise.all(pendingRows.map(async (row) => {
+        let synced = 0;
+        let stillPending = stillPendingFromSkip;
+
+        await Promise.all(rowsToCheck.map(async (row) => {
             try {
                 const taskResult = await service.getTaskResult(row.task_id);
                 if (!taskResult.ready) { stillPending++; return; }
