@@ -2130,6 +2130,7 @@ const US_LOCATIONS = [
     { display: 'Woodmere, NY', value: 'Woodmere, New York, United States', latitude: 40.6321, longitude: -73.7126 },
     { display: 'East Setauket, NY', value: 'East Setauket, New York, United States', latitude: 40.9415, longitude: -73.1059 },
     // North Carolina
+    { display: 'Jarvisburg, NC', value: 'Jarvisburg, North Carolina, United States', latitude: 36.2029, longitude: -75.8666 },
     { display: 'Asheville, NC', value: 'Asheville, North Carolina, United States', latitude: 35.5951, longitude: -82.5515 },
     { display: 'Cary, NC', value: 'Cary, North Carolina, United States', latitude: 35.7915, longitude: -78.7811 },
     { display: 'Chapel Hill, NC', value: 'Chapel Hill, North Carolina, United States', latitude: 35.9132, longitude: -79.0558 },
