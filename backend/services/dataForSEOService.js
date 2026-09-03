@@ -51,15 +51,17 @@ class DataForSEOService {
      * @returns {Array<{ taskId, keyword, tag }>}
      */
     async postTasks(tasks) {
+        const isCode = (loc) => typeof loc === 'number';
         const payload = tasks.map(t => {
-            // Always normalize as string (remove spaces after commas), NEVER use location_code
-            const normalizedLoc = typeof t.location === 'number'
-                ? t.location.toString()
+            const normalizedLoc = isCode(t.location)
+                ? t.location
                 : (t.location || '').replace(/,\s+/g, ',');
 
             const taskPayload = {
                 keyword: t.keyword,
-                location_name: normalizedLoc,  // Always use location_name, not location_code
+                ...(isCode(t.location)
+                    ? { location_code: normalizedLoc }
+                    : { location_name: normalizedLoc }),
                 language_name: 'English',
                 device: t.device || 'desktop',
                 os: (t.device || 'desktop') === 'mobile' ? 'android' : undefined,
