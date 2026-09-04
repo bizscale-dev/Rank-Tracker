@@ -1670,6 +1670,7 @@ const US_LOCATIONS = [
     { display: 'Hopkins, MN', value: 'Hopkins, Minnesota, United States', latitude: 44.9250, longitude: -93.4627 },
     { display: 'Anoka, MN', value: 'Anoka, Minnesota, United States', latitude: 45.1977, longitude: -93.3872 },
     // Mississippi
+    { display: 'Mississippi City, MS', value: 'Mississippi City, Mississippi, United States', latitude: 30.3819, longitude: -89.0439 },
     { display: 'Biloxi, MS', value: 'Biloxi, Mississippi, United States', latitude: 30.3904, longitude: -88.8949 },
     { display: 'Gulfport, MS', value: 'Gulfport, Mississippi, United States', latitude: 30.3673, longitude: -89.0928 },
     { display: 'Hattiesburg, MS', value: 'Hattiesburg, Mississippi, United States', latitude: 31.3301, longitude: -89.2886 },
@@ -1755,6 +1756,7 @@ const US_LOCATIONS = [
     { display: 'Helena, MT', value: 'Helena, Montana, United States', latitude: 46.5927, longitude: -112.0361 },
     { display: 'Kalispell, MT', value: 'Kalispell, Montana, United States', latitude: 48.1958, longitude: -114.3129 },
     // Nebraska
+    { display: 'Bennington, NE', value: 'Bennington, Nebraska, United States', latitude: 41.3647, longitude: -96.1578 },
     { display: 'Bellevue, NE', value: 'Bellevue, Nebraska, United States', latitude: 41.1413, longitude: -95.8930 },
     { display: 'Grand Island, NE', value: 'Grand Island, Nebraska, United States', latitude: 40.9257, longitude: -98.3422 },
     { display: 'Lincoln, NE', value: 'Lincoln, Nebraska, United States', latitude: 40.8258, longitude: -96.6852 },
