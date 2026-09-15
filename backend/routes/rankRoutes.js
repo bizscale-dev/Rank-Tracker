@@ -633,7 +633,7 @@ router.get('/gbp/sync', async (req, res) => {
 
         const { data: pendingRows, error: fetchError } = await sb
             .from('gbp_checks')
-            .select('id, task_id, business_name')
+            .select('id, task_id, business_name, created_at')
             .eq('status', 'pending')
             .not('task_id', 'is', null);
 
@@ -643,8 +643,15 @@ router.get('/gbp/sync', async (req, res) => {
         // Check which GBP tasks are actually ready in ONE request, instead of calling task_get on
         // every pending row every cycle. `null` means the check itself failed -- fall back to
         // polling every row as before rather than silently stalling all syncing.
+        // NOTE: tasks_ready only lists clean successes -- a task that finished with an error
+        // (partial results, internal SE error, etc.) never appears there, so a row must still get
+        // checked directly once it's been pending a while, or it would be skipped forever.
+        const STALE_MS = 90 * 1000;
+        const now = Date.now();
         const readyIds = await service.getGBPReadyTaskIds();
-        const rowsToCheck = readyIds ? pendingRows.filter(row => readyIds.has(row.task_id)) : pendingRows;
+        const rowsToCheck = readyIds
+            ? pendingRows.filter(row => readyIds.has(row.task_id) || (now - new Date(row.created_at).getTime()) > STALE_MS)
+            : pendingRows;
         const stillPendingFromSkip = readyIds ? pendingRows.length - rowsToCheck.length : 0;
 
         let synced = 0;
