@@ -404,6 +404,24 @@ class DataForSEOService {
     }
 
     /**
+     * Get the set of GBP (Local Finder) task IDs that are actually ready, in ONE request.
+     * Free/no per-call cost. Mirrors getReadyTaskIds() for the web/organic side -- use this to
+     * avoid calling task_get on every pending GBP task on every poll cycle.
+     * @returns {Set<string>|null} ready task IDs, or null if the check itself failed (caller falls back to polling everything)
+     */
+    async getGBPReadyTaskIds() {
+        try {
+            const response = await this.client.get('/serp/google/local_finder/tasks_ready');
+            if (response.data.status_code !== 20000) return new Set();
+            const ready = response.data.tasks?.[0]?.result || [];
+            return new Set(ready.map(t => t.id));
+        } catch (err) {
+            console.warn('⚠️  GBP tasks_ready check failed, falling back to polling every task:', err.message);
+            return null;
+        }
+    }
+
+    /**
      * Get GBP (Local Finder) task result
      * @param {string} taskId
      */
