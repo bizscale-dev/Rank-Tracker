@@ -2384,6 +2384,7 @@ const US_LOCATIONS = [
     { display: 'Canby, OR', value: 'Canby, Oregon, United States', latitude: 45.2629, longitude: -122.6926 },
     { display: 'Hermiston, OR', value: 'Hermiston, Oregon, United States', latitude: 45.8404, longitude: -119.2895 },
     // Pennsylvania
+    { display: 'Delaware County, PA', value: 'Delaware County, Pennsylvania, United States', latitude: 39.9194, longitude: -75.4002 },
     { display: 'Allentown, PA', value: 'Allentown, Pennsylvania, United States', latitude: 40.6063, longitude: -75.4704 },
     { display: 'Altoona, PA', value: 'Altoona, Pennsylvania, United States', latitude: 40.5153, longitude: -78.3900 },
     { display: 'Bethlehem, PA', value: 'Bethlehem, Pennsylvania, United States', latitude: 40.6259, longitude: -75.3706 },

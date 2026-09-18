@@ -21,9 +21,11 @@ const STATE_ABBREVS = {
 };
 
 /**
- * City types DataForSEO classifies under US locations
+ * City types DataForSEO classifies under US locations. Includes 'County' so county-level
+ * locations (e.g. "Delaware County, Pennsylvania, United States") are resolvable too, not just
+ * incorporated cities/towns.
  */
-const CITY_TYPES = new Set(['City', 'Municipality', 'Borough', 'Census-designated place', 'Neighborhood', 'Town', 'Village']);
+const CITY_TYPES = new Set(['City', 'Municipality', 'Borough', 'Census-designated place', 'Neighborhood', 'Town', 'Village', 'County']);
 
 class DataForSEOService {
     constructor(login, password) {
