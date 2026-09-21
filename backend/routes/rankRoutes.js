@@ -692,6 +692,13 @@ router.get('/gbp/sync', async (req, res) => {
                 }
             } catch (err) {
                 console.error(`GBP Sync error for task ${row.task_id}:`, err.message);
+                // Unrecoverable at DataForSEO — mark as error instead of leaving the row stuck at
+                // "pending" forever, which would keep getting re-polled by every future sync cycle.
+                const { error: updateError } = await sb
+                    .from('gbp_checks')
+                    .update({ status: 'error' })
+                    .eq('id', row.id);
+                if (updateError) console.error(`GBP Sync error-status update failed for ${row.id}:`, updateError.message);
                 stillPending++;
             }
         }));

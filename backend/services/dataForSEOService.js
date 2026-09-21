@@ -445,11 +445,15 @@ class DataForSEOService {
             return { ready: false };
         }
 
-        if (task.status_code !== 20000) {
+        const result = task.result?.[0];
+
+        // A non-20000 status (e.g. "partial results — some pages could not be retrieved") can
+        // still carry usable business listings. Only treat it as a hard failure when there's
+        // truly nothing to show, instead of discarding real partial data.
+        if (task.status_code !== 20000 && !result) {
             throw new Error(`Task Error: ${task.status_message}`);
         }
 
-        const result = task.result?.[0];
         if (!result) throw new Error('No result data for task');
 
         return {
@@ -458,6 +462,7 @@ class DataForSEOService {
             tag: task.data?.tag || '',
             businesses: result.items || [],
             totalResults: result.se_results_count || 0,
+            partial: task.status_code !== 20000,
             cost: task.cost || 0
         };
     }
